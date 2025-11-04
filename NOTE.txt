@@ -1,0 +1,64 @@
+error in ai-models/Train_all_models -> email ko leke / 
+// extension me error read the docs properly 
+// moralis ka API  nah i hai ? 
+// etherscan me developer hai 
+
+
+
+
+
+
+
+## 5. Setup and Deployment Commands
+
+### Installation Script (setup.sh)
+```bash
+#!/bin/bash
+
+echo "🚀 Setting up Sovereign Identity Guardian..."
+
+# Check Node version
+node_version=$(node -v)
+echo "Node version: $node_version"
+
+# Check Python version
+python_version=$(python3 --version)
+echo "Python version: $python_version"
+
+# Install root dependencies
+echo "📦 Installing root dependencies..."
+npm install
+
+# Install frontend dependencies
+echo "📦 Installing frontend dependencies..."
+cd frontend
+npm install
+cd ..
+
+# Install backend dependencies
+echo "📦 Installing backend dependencies..."
+cd backend
+npm install
+cd ..
+
+# Create Python virtual environment for AI models
+echo "🐍 Setting up Python environment..."
+cd ai-models
+python3 -m venv venv
+source venv/bin/activate
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Train initial models
+echo "🤖 Training AI models..."
+cd transaction_scanner
+python model.py
+cd ../email_scanner
+python model.py
+cd ../..
+
+echo "✅ Setup complete!"
+echo "🎯 To start the application:"
+echo "   Backend: npm run dev:backend"
+echo "   Frontend: npm run dev:frontend"
