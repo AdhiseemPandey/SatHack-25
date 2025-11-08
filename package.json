@@ -1,20 +1,37 @@
 {
   "name": "sovereign-identity-guardian",
   "version": "1.0.0",
-  "description": "Zero-Knowledge AI Security Scanner for Web3 Transactions",
+  "description": "Zero-Knowledge AI Security Scanner for Web3 Transactions and Email Security",
+  "main": "index.js",
   "scripts": {
-    "dev:frontend": "cd frontend && npm start",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
-    "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "build:frontend": "cd frontend && npm run build",
-    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
-    "setup": "chmod +x setup.sh && ./setup.sh",
-    "deploy": "chmod +x deploy.sh && ./deploy.sh"
+    "dev:frontend": "cd frontend && npm start",
+    "install:all": "npm run install:backend && npm run install:frontend && npm run install:ai",
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "install:ai": "cd ai-models && pip install -r requirements.txt",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && npm start",
+    "train:ai": "cd ai-models && python train_all_models.py",
+    "setup": "./setup.sh",
+    "deploy": "./deploy.sh"
   },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
-  },
-  "keywords": ["web3", "security", "zk-proof", "ai", "blockchain"],
+  "keywords": [
+    "web3",
+    "security",
+    "ai",
+    "blockchain",
+    "zero-knowledge",
+    "privacy"
+  ],
   "author": "Sovereign Identity Guardian Team",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^7.6.0"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=7.0.0"
+  }
 }

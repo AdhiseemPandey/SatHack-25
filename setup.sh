@@ -1,55 +1,67 @@
 #!/bin/bash
 
-echo "🛡️  Sovereign Identity Guardian - Setup Started"
+echo "🛡️  Sovereign Identity Guardian - Setup Script"
 echo "=============================================="
 
-# Check Node.js version
-echo "🔍 Checking Node.js version..."
-NODE_VERSION=$(node -v)
-if [ "$NODE_VERSION" != "v22.13.0" ]; then
-    echo "⚠️  Warning: Expected Node.js v22.13.0, found $NODE_VERSION"
-else
-    echo "✅ Node.js version: $NODE_VERSION"
+# Check if Python is installed
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Python 3 is required but not installed. Please install Python 3.8 or higher."
+    exit 1
 fi
 
-# Check Python version
-echo "🔍 Checking Python version..."
-PYTHON_VERSION=$(python3 --version)
-if [[ "$PYTHON_VERSION" != *"3.13.9"* ]]; then
-    echo "⚠️  Warning: Expected Python 3.13.9, found $PYTHON_VERSION"
-else
-    echo "✅ Python version: $PYTHON_VERSION"
+# Check if Node.js is installed
+if ! command -v node &> /dev/null; then
+    echo "❌ Node.js is required but not installed. Please install Node.js 16 or higher."
+    exit 1
 fi
+
+# Check if npm is installed
+if ! command -v npm &> /dev/null; then
+    echo "❌ npm is required but not installed. Please install npm."
+    exit 1
+fi
+
+echo "✅ Prerequisites check passed"
 
 # Create necessary directories
-echo "📁 Creating project structure..."
-mkdir -p backend/src/routes
-mkdir -p backend/src/config
-mkdir -p frontend/src/components
-mkdir -p frontend/public
-mkdir -p ai-models/transaction_scanner
-mkdir -p ai-models/email_scanner
+echo "📁 Creating directory structure..."
+mkdir -p logs
+mkdir -p data
 
 # Install root dependencies
 echo "📦 Installing root dependencies..."
 npm install
 
-# Install backend dependencies
-echo "📦 Installing backend dependencies..."
+# Setup Backend
+echo "🚀 Setting up Backend..."
 cd backend
+if [ ! -f ".env" ]; then
+    echo "📝 Creating backend environment file..."
+    cp .env.example .env
+    echo "⚠️  Please edit backend/.env with your configuration"
+fi
+
 npm install
 cd ..
 
-# Install frontend dependencies
-echo "📦 Installing frontend dependencies..."
+# Setup Frontend
+echo "🌐 Setting up Frontend..."
 cd frontend
 npm install
 cd ..
 
-# Setup Python environment
-echo "🐍 Setting up Python environment..."
+# Setup AI Models
+echo "🤖 Setting up AI Models..."
 cd ai-models
-python3 -m venv venv
+
+# Check if virtual environment exists, if not create one
+if [ ! -d "venv" ]; then
+    echo "🐍 Creating Python virtual environment..."
+    python3 -m venv venv
+fi
+
+# Activate virtual environment
+echo "🔧 Activating virtual environment..."
 source venv/bin/activate
 
 # Install Python dependencies
@@ -57,20 +69,21 @@ echo "📦 Installing Python dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Train AI models
-echo "🤖 Training AI models..."
-cd transaction_scanner
-python model.py
-cd ../email_scanner
-python model.py
-cd ../..
+# Create data storage directory
+mkdir -p training_data
+
+# Train initial AI models
+echo "🧠 Training initial AI models..."
+python train_all_models.py
+
+cd ..
 
 echo ""
-echo "✅ SETUP COMPLETED SUCCESSFULLY!"
-echo "🎯 Next steps:"
-echo "   1. Configure environment variables in backend/.env"
-echo "   2. Start backend: npm run dev:backend"
-echo "   3. Start frontend: npm run dev:frontend"
-echo "   4. Open http://localhost:3000"
+echo "🎉 Setup completed successfully!"
 echo ""
-echo "🛡️  Sovereign Identity Guardian is ready to protect your transactions!"
+echo "📋 Next steps:"
+echo "   1. Edit backend/.env with your configuration"
+echo "   2. Run 'npm run dev' to start development servers"
+echo "   3. Open http://localhost:3000 in your browser"
+echo ""
+echo "🛡️  Sovereign Identity Guardian is ready to protect!"

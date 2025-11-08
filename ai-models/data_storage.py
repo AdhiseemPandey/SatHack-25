@@ -1,4 +1,9 @@
-# data_storage.py
+#!/usr/bin/env python3
+"""
+Centralized Data Storage for Sovereign Identity Guardian AI Models
+Manages training data accumulation and model metadata
+"""
+
 import json
 import os
 from datetime import datetime
@@ -20,6 +25,13 @@ class DataStorage:
             'descriptions': [],
             'timestamps': []
         }
+        self.daily_usage_data = {
+            'activities': [],
+            'labels': [],
+            'sources': [],
+            'descriptions': [],
+            'timestamps': []
+        }
         self.model_metadata = {}
         self.load_data()
 
@@ -31,6 +43,7 @@ class DataStorage:
                     data = json.load(f)
                     self.email_data = data.get('email_data', self.email_data)
                     self.transaction_data = data.get('transaction_data', self.transaction_data)
+                    self.daily_usage_data = data.get('daily_usage_data', self.daily_usage_data)
                     self.model_metadata = data.get('model_metadata', {})
                 print(f"✅ Loaded data from {self.data_file}")
             except Exception as e:
@@ -44,6 +57,7 @@ class DataStorage:
             data = {
                 'email_data': self.email_data,
                 'transaction_data': self.transaction_data,
+                'daily_usage_data': self.daily_usage_data,
                 'model_metadata': self.model_metadata,
                 'last_updated': datetime.now().isoformat()
             }
@@ -73,6 +87,16 @@ class DataStorage:
         self.save_data()
         return True
 
+    def add_daily_usage_sample(self, activities, label, source="manual", description=""):
+        """Add a daily usage sample to accumulated data"""
+        self.daily_usage_data['activities'].append(activities)
+        self.daily_usage_data['labels'].append(int(label))
+        self.daily_usage_data['sources'].append(source)
+        self.daily_usage_data['descriptions'].append(description)
+        self.daily_usage_data['timestamps'].append(datetime.now().isoformat())
+        self.save_data()
+        return True
+
     def get_email_data(self):
         """Get all email data and labels"""
         return self.email_data['emails'], self.email_data['labels']
@@ -81,39 +105,66 @@ class DataStorage:
         """Get all transaction data and labels"""
         return self.transaction_data['transactions'], self.transaction_data['labels']
 
+    def get_daily_usage_data(self):
+        """Get all daily usage data and labels"""
+        return self.daily_usage_data['activities'], self.daily_usage_data['labels']
+
     def get_stats(self):
         """Get statistics about accumulated data"""
         email_stats = {
             'total_samples': len(self.email_data['emails']),
             'legitimate_count': sum(1 for label in self.email_data['labels'] if label == 0),
-            'spam_count': sum(1 for label in self.email_data['labels'] if label == 1)
+            'spam_count': sum(1 for label in self.email_data['labels'] if label == 1),
+            'sources': {}
         }
         
         transaction_stats = {
             'total_samples': len(self.transaction_data['transactions']),
-            'legitimate_count': sum(1 for label in self.transaction_data['labels'] if label == 0),
-            'fraud_count': sum(1 for label in self.transaction_data['labels'] if label == 1)
+            'safe_count': sum(1 for label in self.transaction_data['labels'] if label == 0),
+            'risky_count': sum(1 for label in self.transaction_data['labels'] if label == 1),
+            'sources': {}
         }
+        
+        daily_usage_stats = {
+            'total_samples': len(self.daily_usage_data['activities']),
+            'normal_count': sum(1 for label in self.daily_usage_data['labels'] if label == 0),
+            'suspicious_count': sum(1 for label in self.daily_usage_data['labels'] if label == 1),
+            'sources': {}
+        }
+        
+        # Count sources
+        for source in self.email_data['sources']:
+            email_stats['sources'][source] = email_stats['sources'].get(source, 0) + 1
+        
+        for source in self.transaction_data['sources']:
+            transaction_stats['sources'][source] = transaction_stats['sources'].get(source, 0) + 1
+            
+        for source in self.daily_usage_data['sources']:
+            daily_usage_stats['sources'][source] = daily_usage_stats['sources'].get(source, 0) + 1
         
         return {
             'emails': email_stats,
-            'transactions': transaction_stats
+            'transactions': transaction_stats,
+            'daily_usage': daily_usage_stats,
+            'last_updated': datetime.now().isoformat()
         }
 
-    def clear_email_data(self):
-        """Clear all email data"""
-        self.email_data = {
-            'emails': [], 'labels': [], 'sources': [], 'descriptions': [], 'timestamps': []
-        }
+    def clear_data(self, data_type='all'):
+        """Clear specific or all data"""
+        if data_type == 'emails' or data_type == 'all':
+            self.email_data = {'emails': [], 'labels': [], 'sources': [], 'descriptions': [], 'timestamps': []}
+        
+        if data_type == 'transactions' or data_type == 'all':
+            self.transaction_data = {'transactions': [], 'labels': [], 'sources': [], 'descriptions': [], 'timestamps': []}
+            
+        if data_type == 'daily_usage' or data_type == 'all':
+            self.daily_usage_data = {'activities': [], 'labels': [], 'sources': [], 'descriptions': [], 'timestamps': []}
+        
+        if data_type == 'all':
+            self.model_metadata = {}
+        
         self.save_data()
-        return True
-
-    def clear_transaction_data(self):
-        """Clear all transaction data"""
-        self.transaction_data = {
-            'transactions': [], 'labels': [], 'sources': [], 'descriptions': [], 'timestamps': []
-        }
-        self.save_data()
+        print(f"✅ Cleared {data_type} data")
         return True
 
     def save_model_metadata(self, model_type, metadata):
@@ -121,9 +172,36 @@ class DataStorage:
         self.model_metadata[model_type] = metadata
         self.save_data()
 
-    def load_model_metadata(self, model_type):
+    def get_model_metadata(self, model_type=None):
         """Load model metadata"""
-        return self.model_metadata.get(model_type, {})
+        if model_type:
+            return self.model_metadata.get(model_type, {})
+        return self.model_metadata
+
+    def get_detailed_samples(self, data_type, limit=10):
+        """Get detailed sample information"""
+        if data_type == 'emails':
+            data = self.email_data
+        elif data_type == 'transactions':
+            data = self.transaction_data
+        elif data_type == 'daily_usage':
+            data = self.daily_usage_data
+        else:
+            return []
+        
+        samples = []
+        for i in range(min(limit, len(data['emails' if data_type == 'emails' else 'transactions' if data_type == 'transactions' else 'activities']))):
+            sample = {
+                'data': data['emails' if data_type == 'emails' else 'transactions' if data_type == 'transactions' else 'activities'][i],
+                'label': data['labels'][i],
+                'source': data['sources'][i],
+                'timestamp': data['timestamps'][i]
+            }
+            if data['descriptions'][i]:
+                sample['description'] = data['descriptions'][i]
+            samples.append(sample)
+        
+        return samples
 
 # Create a global instance
 data_storage = DataStorage()

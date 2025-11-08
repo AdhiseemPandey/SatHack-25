@@ -297,12 +297,29 @@ class AdvancedTransactionRiskModel:
         
         return X, y
     
-    def train(self, transactions, labels, test_size=0.3):
+    def train(self, use_accumulated_data=True, test_size=0.3):
         """Train the advanced risk model"""
         print("🚀 Training Advanced Transaction Risk Model...")
         
-        # Prepare data
-        X, y = self.prepare_training_data(transactions, labels)
+        if use_accumulated_data:
+            # Use accumulated data from storage
+            transactions, labels = data_storage.get_transaction_data()
+            stats = data_storage.get_stats()['transactions']
+            
+            print(f"📊 Using accumulated data: {stats['total_samples']} samples")
+            print(f"📊 Safe: {stats['safe_count']}, Risky: {stats['risky_count']}")
+            
+            if len(transactions) >= 4:  # Minimum samples needed
+                X, y = self.prepare_training_data(transactions, labels)
+            else:
+                print("📝 Insufficient accumulated data, using sample data...")
+                sample_data = self._get_sample_data()
+                X, y = self.prepare_training_data(sample_data['transactions'], sample_data['labels'])
+        else:
+            # Use only sample data
+            print("📝 Using sample data only...")
+            sample_data = self._get_sample_data()
+            X, y = self.prepare_training_data(sample_data['transactions'], sample_data['labels'])
         
         print(f"📊 Data shape: {X.shape}, Labels: {y.shape}")
         print(f"📊 Feature names: {self.feature_names}")
@@ -337,7 +354,7 @@ class AdvancedTransactionRiskModel:
         
         # Evaluate model
         train_accuracy = self.model.score(X_train_scaled, y_train)
-        test_accuracy = self.model.score(X_test_scaled, y_test)
+        test_accuracy = self.model.score(X_test_scaled, y_test) if len(X_test) > 0 else 0
         
         # Cross-validation with adjusted folds for small datasets
         cv_folds = min(3, len(X_train_scaled) // 2)
@@ -358,8 +375,14 @@ class AdvancedTransactionRiskModel:
             'test_accuracy': test_accuracy,
             'cv_mean_accuracy': cv_mean,
             'cv_std_accuracy': cv_std,
-            'feature_importance': dict(zip(self.feature_names, self.model.feature_importances_)) if hasattr(self.model, 'feature_importances_') else {}
+            'feature_importance': dict(zip(self.feature_names, self.model.feature_importances_)) if hasattr(self.model, 'feature_importances_') else {},
+            'used_accumulated_data': use_accumulated_data,
+            'total_samples': len(X),
+            'trained_at': datetime.now().isoformat()
         }
+        
+        # Save metadata to storage
+        data_storage.save_model_metadata('transaction_scanner', self.model_metadata)
         
         print(f"✅ Model training completed!")
         print(f"📊 Training Accuracy: {train_accuracy:.4f}")
@@ -376,17 +399,21 @@ class AdvancedTransactionRiskModel:
         """Predict risk for a single transaction"""
         if not self.model:
             # Return default prediction if model not trained
+            features = self.extract_advanced_features(transaction_data)
+            risk_score = int(features.get('suspicious_score', 0))
+            
             return {
-                'risk_level': 0,
-                'risk_score': 10,
-                'threat_level': 'SAFE',
+                'risk_level': int(risk_score > 60),
+                'risk_score': risk_score,
+                'threat_level': self.calculate_threat_level(risk_score, features),
                 'confidence': 0.5,
-                'features': {},
+                'features': features,
                 'probabilities': {
-                    'safe': 0.5,
-                    'risky': 0.5
+                    'safe': 1.0 - (risk_score / 100),
+                    'risky': risk_score / 100
                 },
-                'warnings': ['Model not fully trained, using basic analysis']
+                'warnings': self.generate_warnings(features, risk_score),
+                'note': 'Model not trained, using basic pattern analysis'
             }
         
         # Extract features
@@ -459,7 +486,7 @@ class AdvancedTransactionRiskModel:
         
         return warnings
     
-    def save_model(self, filepath):
+    def save_model(self, filepath='advanced_transaction_model.joblib'):
         """Save trained model and metadata"""
         if self.model:
             model_data = {
@@ -471,118 +498,90 @@ class AdvancedTransactionRiskModel:
             }
             joblib.dump(model_data, filepath)
             print(f"✅ Model saved to {filepath}")
+            return True
         else:
-            raise Exception("No trained model to save")
+            print("❌ No trained model to save")
+            return False
     
-    def load_model(self, filepath):
+    def load_model(self, filepath='advanced_transaction_model.joblib'):
         """Load trained model and metadata"""
-        model_data = joblib.load(filepath)
+        try:
+            model_data = joblib.load(filepath)
+            
+            self.model = model_data['model']
+            self.scaler = model_data['scaler']
+            self.feature_names = model_data['feature_names']
+            self.malicious_patterns = model_data['malicious_patterns']
+            self.model_metadata = model_data['model_metadata']
+            
+            print(f"✅ Model loaded from {filepath}")
+            print(f"📊 Model accuracy: {self.model_metadata.get('test_accuracy', 'N/A')}")
+            return True
+        except Exception as e:
+            print(f"❌ Error loading model: {e}")
+            return False
+    
+    def _get_sample_data(self):
+        """Get sample training data (fallback)"""
+        sample_transactions = [
+            # Safe transactions
+            {
+                'to': '0x742d35Cc6634C0532925a3b8D3Bf5d1C4f1E8a1f',
+                'value': '0xde0b6b3a7640000',  # 1 ETH
+                'data': '0x',
+                'gasPrice': '0x4a817c800',  # 20 Gwei
+                'gas': '0x5208'  # 21000
+            },
+            {
+                'to': '0x1f9090aaE28b8a3dCeaDf281B0F12828e676c326',
+                'value': '0x16345785d8a0000',  # 0.1 ETH
+                'data': '0x',
+                'gasPrice': '0x3b9aca00',  # 1 Gwei
+                'gas': '0x5208'
+            },
+            # Risky transactions
+            {
+                'to': '0x8576acc5c05d6ce88f4e49f65b8677898efc8d8a',
+                'value': '0x1bc16d674ec80000',  # 2 ETH
+                'data': '0xa9059cbb0000000000000000000000000000000000000000000000000000000000000000',
+                'gasPrice': '0x2cb417800',  # 12 Gwei
+                'gas': '0x186a0'  # 100,000
+            },
+            {
+                'to': '0x901bb9583b24d97e995513c6778dc6888ab6870e',
+                'value': '0x8ac7230489e80000',  # 10 ETH
+                'data': '0x095ea7b30000000000000000000000000000000000000000000000000000000000000000',
+                'gasPrice': '0x4a817c800',
+                'gas': '0x30d40'  # 200,000
+            }
+        ]
         
-        self.model = model_data['model']
-        self.scaler = model_data['scaler']
-        self.feature_names = model_data['feature_names']
-        self.malicious_patterns = model_data['malicious_patterns']
-        self.model_metadata = model_data['model_metadata']
+        sample_labels = [0, 0, 1, 1]  # 0 = safe, 1 = risky
         
-        print(f"✅ Model loaded from {filepath}")
-        print(f"📊 Model accuracy: {self.model_metadata.get('test_accuracy', 'N/A')}")
+        # Add known malicious addresses
+        self.malicious_patterns['blacklisted_addresses'].add('0x8576acc5c05d6ce88f4e49f65b8677898efc8d8a')
+        self.malicious_patterns['blacklisted_addresses'].add('0x901bb9583b24d97e995513c6778dc6888ab6870e')
+        
+        return {'transactions': sample_transactions, 'labels': sample_labels}
+    
+    def add_training_sample(self, transaction, label, source="manual", description=""):
+        """Add a new training sample to accumulated data"""
+        return data_storage.add_transaction_sample(transaction, label, source, description)
 
-# Example usage and testing
 def main():
     """Main function to demonstrate the model"""
-    print("🛡️ Sovereign Identity Guardian - AI Model Demo")
+    print("🛡️ Sovereign Identity Guardian - Transaction AI Model")
     
     # Create model instance
     model = AdvancedTransactionRiskModel()
     
-    # Expanded sample training data
-    sample_transactions = [
-        # Safe transactions (10 samples)
-        {
-            'to': '0x742d35Cc6634C0532925a3b8D3Bf5d1C4f1E8a1f',
-            'value': '0xde0b6b3a7640000',  # 1 ETH
-            'data': '0x',
-            'gasPrice': '0x4a817c800',  # 20 Gwei
-            'gas': '0x5208'  # 21000
-        },
-        {
-            'to': '0x1f9090aaE28b8a3dCeaDf281B0F12828e676c326',
-            'value': '0x16345785d8a0000',  # 0.1 ETH
-            'data': '0x',
-            'gasPrice': '0x3b9aca00',  # 1 Gwei
-            'gas': '0x5208'
-        },
-        {
-            'to': '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
-            'value': '0x2386f26fc10000',  # 0.01 ETH
-            'data': '0x',
-            'gasPrice': '0x77359400',  # 2 Gwei
-            'gas': '0x5208'
-        },
-        {
-            'to': '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B',
-            'value': '0x1bc16d674ec80000',  # 2 ETH
-            'data': '0x',
-            'gasPrice': '0x4a817c800',
-            'gas': '0x5208'
-        },
-        {
-            'to': '0xDA9dfA130Df4dE4673b89022EE50ff26f6EA73Cf',
-            'value': '0x6f05b59d3b20000',  # 0.5 ETH
-            'data': '0x',
-            'gasPrice': '0x3b9aca00',
-            'gas': '0x5208'
-        },
-        
-        # Risky transactions (10 samples)
-        {
-            'to': '0x8576acc5c05d6ce88f4e49f65b8677898efc8d8a',  # Known scam
-            'value': '0x1bc16d674ec80000',  # 2 ETH
-            'data': '0xa9059cbb0000000000000000000000000000000000000000000000000000000000000000',
-            'gasPrice': '0x2cb417800',  # 12 Gwei
-            'gas': '0x186a0'  # 100,000
-        },
-        {
-            'to': '0x901bb9583b24d97e995513c6778dc6888ab6870e',
-            'value': '0x8ac7230489e80000',  # 10 ETH
-            'data': '0x095ea7b30000000000000000000000000000000000000000000000000000000000000000',
-            'gasPrice': '0x4a817c800',
-            'gas': '0x30d40'  # 200,000
-        },
-        {
-            'to': '0x1da5821544e25c636c1417ba96ade4cf6d2f9b5a',
-            'value': '0x4563918244f40000',  # 5 ETH
-            'data': '0xa9059cbb0000000000000000000000000000000000000000000000000000000000000000',
-            'gasPrice': '0x5d21dba00',  # 25 Gwei
-            'gas': '0x249f0'  # 150,000
-        },
-        {
-            'to': '0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2',
-            'value': '0xad78ebc5ac6200000',  # 125 ETH
-            'data': '0x095ea7b30000000000000000000000000000000000000000000000000000000000000000',
-            'gasPrice': '0x6fc23ac00',  # 30 Gwei
-            'gas': '0x30d40'
-        },
-        {
-            'to': '0x5a4f765476fd8c36357a2e8a5c4a1e4b5a5e5e5e',
-            'value': '0x152d02c7e14af6800000',  # 100,000 ETH
-            'data': '0xa9059cbb0000000000000000000000000000000000000000000000000000000000000000',
-            'gasPrice': '0x77359400',  # 2 Gwei
-            'gas': '0x186a0'
-        }
-    ]
+    # Check current data stats
+    stats = data_storage.get_stats()
+    print(f"📊 Current Data Statistics:")
+    print(f"   Transactions: {stats['transactions']['total_samples']} samples")
     
-    sample_labels = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]  # 0 = safe, 1 = risky
-    
-    # Add known malicious addresses
-    model.malicious_patterns['blacklisted_addresses'].add('0x8576acc5c05d6ce88f4e49f65b8677898efc8d8a')
-    model.malicious_patterns['blacklisted_addresses'].add('0x901bb9583b24d97e995513c6778dc6888ab6870e')
-    model.malicious_patterns['blacklisted_addresses'].add('0x1da5821544e25c636c1417ba96ade4cf6d2f9b5a')
-    model.malicious_patterns['blacklisted_addresses'].add('0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2')
-    model.malicious_patterns['blacklisted_addresses'].add('0x5a4f765476fd8c36357a2e8a5c4a1e4b5a5e5e5e')
-    
-    # Train model
-    metadata = model.train(sample_transactions, sample_labels)
+    # Train with accumulated data
+    metadata = model.train(use_accumulated_data=True)
     
     # Test prediction
     test_transaction = {
@@ -602,9 +601,9 @@ def main():
     print(f"Warnings: {prediction['warnings']}")
     
     # Save model
-    model.save_model('advanced_transaction_model.joblib')
+    model.save_model()
     
-    print(f"\n✅ AI Model Demo Completed Successfully!")
+    print(f"\n✅ Transaction AI Model Demo Completed!")
 
 if __name__ == "__main__":
     main()

@@ -130,7 +130,15 @@ const SuccessMessage = styled(motion.div)`
   font-size: 0.9rem;
 `;
 
-function Web3Integration({ onWeb3Enabled, backendStatus }) {
+const Loader = styled(motion.div)`
+  width: 20px;
+  height: 20px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+`;
+
+function Web3Integration({ onWeb3Enabled, backendStatus, autoConnect }) {
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -143,6 +151,44 @@ function Web3Integration({ onWeb3Enabled, backendStatus }) {
     setSuccess(null);
   };
 
+  // Auto-connect on component mount if autoConnect is true
+  useEffect(() => {
+    if (autoConnect && window.ethereum) {
+      autoConnectWallet();
+    }
+  }, [autoConnect]);
+
+  const autoConnectWallet = async () => {
+    try {
+      const accounts = await window.ethereum.request({
+        method: 'eth_accounts'
+      });
+      
+      if (accounts.length > 0) {
+        setAccount(accounts[0]);
+        setConnected(true);
+        onWeb3Enabled(true);
+        
+        const chainId = await window.ethereum.request({
+          method: 'eth_chainId'
+        });
+        
+        setNetwork({
+          chainId: parseInt(chainId),
+          name: getNetworkName(chainId)
+        });
+        
+        // Set up event listeners
+        window.ethereum.on('accountsChanged', handleAccountsChanged);
+        window.ethereum.on('chainChanged', handleChainChanged);
+        
+        console.log('Wallet auto-connected successfully');
+      }
+    } catch (error) {
+      console.log('Auto-connect failed:', error);
+    }
+  };
+
   const connectWallet = async () => {
     setLoading(true);
     clearMessages();
@@ -151,7 +197,6 @@ function Web3Integration({ onWeb3Enabled, backendStatus }) {
       if (typeof window.ethereum !== 'undefined') {
         console.log('MetaMask is installed!');
         
-        // Request account access
         const accounts = await window.ethereum.request({
           method: 'eth_requestAccounts'
         });
@@ -162,7 +207,6 @@ function Web3Integration({ onWeb3Enabled, backendStatus }) {
           onWeb3Enabled(true);
           setSuccess('Wallet connected successfully!');
           
-          // Get network information
           const chainId = await window.ethereum.request({
             method: 'eth_chainId'
           });
@@ -172,10 +216,8 @@ function Web3Integration({ onWeb3Enabled, backendStatus }) {
             name: getNetworkName(chainId)
           });
           
-          // Set up event listeners
           window.ethereum.on('accountsChanged', handleAccountsChanged);
           window.ethereum.on('chainChanged', handleChainChanged);
-          window.ethereum.on('disconnect', handleDisconnect);
           
           console.log('Connected account:', accounts[0]);
         } else {
@@ -196,7 +238,6 @@ function Web3Integration({ onWeb3Enabled, backendStatus }) {
 
   const handleAccountsChanged = (accounts) => {
     if (accounts.length === 0) {
-      // User disconnected wallet
       setConnected(false);
       setAccount(null);
       onWeb3Enabled(false);
@@ -213,15 +254,7 @@ function Web3Integration({ onWeb3Enabled, backendStatus }) {
       name: getNetworkName(chainId)
     });
     setSuccess('Network changed');
-    // Reload the page to ensure everything works correctly
     window.location.reload();
-  };
-
-  const handleDisconnect = () => {
-    setConnected(false);
-    setAccount(null);
-    onWeb3Enabled(false);
-    setError('Wallet disconnected');
   };
 
   const getNetworkName = (chainId) => {
@@ -243,59 +276,11 @@ function Web3Integration({ onWeb3Enabled, backendStatus }) {
     setNetwork(null);
     setSuccess('Wallet disconnected');
     
-    // Remove event listeners
     if (window.ethereum) {
       window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
       window.ethereum.removeListener('chainChanged', handleChainChanged);
-      window.ethereum.removeListener('disconnect', handleDisconnect);
     }
   };
-
-  // Check if already connected on component mount
-  useEffect(() => {
-    const checkConnection = async () => {
-      if (window.ethereum) {
-        try {
-          const accounts = await window.ethereum.request({
-            method: 'eth_accounts'
-          });
-          
-          if (accounts.length > 0) {
-            setAccount(accounts[0]);
-            setConnected(true);
-            onWeb3Enabled(true);
-            
-            const chainId = await window.ethereum.request({
-              method: 'eth_chainId'
-            });
-            
-            setNetwork({
-              chainId: parseInt(chainId),
-              name: getNetworkName(chainId)
-            });
-            
-            // Set up event listeners
-            window.ethereum.on('accountsChanged', handleAccountsChanged);
-            window.ethereum.on('chainChanged', handleChainChanged);
-            window.ethereum.on('disconnect', handleDisconnect);
-          }
-        } catch (error) {
-          console.error('Error checking connection:', error);
-        }
-      }
-    };
-
-    checkConnection();
-
-    return () => {
-      // Cleanup event listeners
-      if (window.ethereum) {
-        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-        window.ethereum.removeListener('chainChanged', handleChainChanged);
-        window.ethereum.removeListener('disconnect', handleDisconnect);
-      }
-    };
-  }, [onWeb3Enabled]);
 
   // Auto-clear messages after 5 seconds
   useEffect(() => {
@@ -337,12 +322,7 @@ function Web3Integration({ onWeb3Enabled, backendStatus }) {
         >
           {loading ? (
             <>
-              <motion.span
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              >
-                ⏳
-              </motion.span>
+              <Loader />
               Connecting...
             </>
           ) : connected ? (

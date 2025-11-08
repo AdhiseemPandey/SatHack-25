@@ -57,3 +57,43 @@ Start with option 1 or 2 to begin accumulating data samples
 Then check option 3 to see your data statistics
 
 Later use option 5 to retrain models with new data
+
+
+
+
+cd ai-models
+pip install -r requirements.txt
+
+python data_storage.py
+
+python accumulate_data.py(manual training)
+
+python train_all_models.py(train all models)
+
+// Test Individual Models
+# Test email model
+python -c "from email_scanner.model import AdvancedEmailSpamModel; model = AdvancedEmailSpamModel(); model.load_model(); print(model.predict_spam('Test email content'))"
+
+# Test transaction model  
+python -c "from transaction_scanner.model import AdvancedTransactionRiskModel; model = AdvancedTransactionRiskModel(); model.load_model(); print(model.predict_risk({'to': '0x123...', 'value': '0x0'}))"
+
+# Test daily usage model
+python -c "from daily_usage_scanner.model import AdvancedDailyUsageModel; model = AdvancedDailyUsageModel(); model.load_model(); print(model.predict_risk('Daily activities log'))"
+
+
+
+// FEATURES
+
+Self-Training: All models automatically use accumulated data for continuous improvement
+
+Manual Training: Use the data accumulation tool to add labeled samples
+
+Batch Training: Train all models simultaneously with one command
+
+Feature Engineering: Advanced feature extraction for each domain
+
+Model Persistence: Save and load trained models with metadata
+
+Performance Tracking: Monitor model accuracy and training statistics
+
+Data Management: Centralized storage for all training data

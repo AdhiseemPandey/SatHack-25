@@ -3,6 +3,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const dotenv = require('dotenv');
 const rateLimit = require('express-rate-limit');
+const { spawn } = require('child_process');
+const path = require('path');
 
 // Load environment variables
 dotenv.config();
@@ -32,8 +34,8 @@ app.use(cors({
 
 // Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
   message: {
     error: 'Too many requests from this IP, please try again later.'
   }
@@ -57,7 +59,51 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     service: 'Sovereign Identity Guardian API',
     version: '1.0.0',
-    environment: process.env.NODE_ENV
+    environment: process.env.NODE_ENV,
+    features: ['email-scanner', 'transaction-scanner', 'daily-usage-scanner']
+  });
+});
+
+// AI Models Health Check
+app.get('/api/ai-health', (req, res) => {
+  const pythonProcess = spawn('python', [
+    path.join(__dirname, '../../ai-models/check_models.py')
+  ]);
+
+  let result = '';
+  let error = '';
+
+  pythonProcess.stdout.on('data', (data) => {
+    result += data.toString();
+  });
+
+  pythonProcess.stderr.on('data', (data) => {
+    error += data.toString();
+  });
+
+  pythonProcess.on('close', (code) => {
+    if (code === 0) {
+      try {
+        const healthData = JSON.parse(result);
+        res.json({
+          status: 'healthy',
+          models: healthData,
+          timestamp: new Date().toISOString()
+        });
+      } catch (e) {
+        res.status(500).json({
+          status: 'error',
+          error: 'Failed to parse AI models health data',
+          details: result
+        });
+      }
+    } else {
+      res.status(500).json({
+        status: 'error',
+        error: 'AI models health check failed',
+        details: error
+      });
+    }
   });
 });
 
@@ -65,6 +111,8 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/scan', require('./routes/scan'));
 app.use('/api/threat-intel', require('./routes/threatIntel'));
+app.use('/api/daily-usage', require('./routes/dailyUsage'));
+app.use('/api/ai-models', require('./routes/aiModels'));
 
 // 404 Handler
 app.use('*', (req, res) => {
@@ -100,6 +148,7 @@ app.listen(PORT, () => {
 🌍 Environment: ${process.env.NODE_ENV}
 🚀 Server: http://localhost:${PORT}
 📊 Health: http://localhost:${PORT}/api/health
+🤖 AI Health: http://localhost:${PORT}/api/ai-health
   `);
 });
 

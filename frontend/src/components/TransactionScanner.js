@@ -99,6 +99,31 @@ const QuickExampleButton = styled(motion.button)`
   }
 `;
 
+const AutoScanButton = styled(motion.button)`
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(139, 92, 246, 0.3);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
 const ScanButton = styled(motion.button)`
   background: ${props => {
     if (props.disabled) return '#d1d5db';
@@ -330,7 +355,7 @@ const Loader = styled(motion.div)`
   border-radius: 50%;
 `;
 
-function TransactionScanner({ web3Enabled, backendStatus }) {
+function TransactionScanner({ web3Enabled, backendStatus, autoConnect }) {
   const [transactionData, setTransactionData] = useState('');
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState(null);
@@ -373,6 +398,74 @@ function TransactionScanner({ web3Enabled, backendStatus }) {
     // Focus the textarea
     if (textareaRef.current) {
       textareaRef.current.focus();
+    }
+  };
+
+  const autoScanTransaction = async () => {
+    if (!web3Enabled || !window.ethereum) {
+      setError('Please connect your wallet first');
+      return;
+    }
+
+    setScanning(true);
+    setError(null);
+    setResult(null);
+    setProgress(0);
+
+    try {
+      const progressInterval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
+      // Get current account
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts'
+      });
+      
+      if (accounts.length === 0) {
+        throw new Error('No accounts found');
+      }
+
+      const userAddress = accounts[0];
+
+      // Auto-scan current transaction
+      const response = await axios.post('http://localhost:5000/api/scan/auto-scan', {
+        userAddress: userAddress
+      });
+
+      clearInterval(progressInterval);
+      setProgress(100);
+
+      setTimeout(() => {
+        setResult(response.data);
+        setScanning(false);
+        setProgress(0);
+        
+        // Populate the textarea with the scanned transaction
+        if (response.data.transaction) {
+          setTransactionData(JSON.stringify(response.data.transaction, null, 2));
+        }
+      }, 500);
+
+    } catch (error) {
+      setScanning(false);
+      setProgress(0);
+      
+      if (error.response?.data?.error) {
+        setError(error.response.data.error);
+      } else if (error.message) {
+        setError(error.message);
+      } else {
+        setError('Failed to auto-scan transaction. Please try again.');
+      }
+      
+      console.error('Auto-scan error:', error);
     }
   };
 
@@ -518,31 +611,43 @@ function TransactionScanner({ web3Enabled, backendStatus }) {
           />
         </InputGroup>
 
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <QuickExampleButton
-            onClick={() => loadExample('safe')}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            disabled={scanning}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <QuickExampleButton
+              onClick={() => loadExample('safe')}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={scanning}
+            >
+              Load Safe Example
+            </QuickExampleButton>
+            <QuickExampleButton
+              onClick={() => loadExample('suspicious')}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={scanning}
+            >
+              Load Suspicious Example
+            </QuickExampleButton>
+            <QuickExampleButton
+              onClick={() => loadExample('critical')}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={scanning}
+            >
+              Load Critical Example
+            </QuickExampleButton>
+          </div>
+
+          <AutoScanButton
+            onClick={autoScanTransaction}
+            disabled={!web3Enabled || scanning}
+            whileHover={web3Enabled && !scanning ? { scale: 1.02 } : {}}
+            whileTap={web3Enabled && !scanning ? { scale: 0.98 } : {}}
           >
-            Load Safe Example
-          </QuickExampleButton>
-          <QuickExampleButton
-            onClick={() => loadExample('suspicious')}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            disabled={scanning}
-          >
-            Load Suspicious Example
-          </QuickExampleButton>
-          <QuickExampleButton
-            onClick={() => loadExample('critical')}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            disabled={scanning}
-          >
-            Load Critical Example
-          </QuickExampleButton>
+            <span>🔍</span>
+            Auto-Scan Current Transaction
+          </AutoScanButton>
         </div>
 
         <ScanButton
@@ -628,7 +733,7 @@ function TransactionScanner({ web3Enabled, backendStatus }) {
               </ResultHeader>
 
               <ResultContent>
-                {result.analysis.warnings.length > 0 && (
+                {result.analysis.warnings && result.analysis.warnings.length > 0 && (
                   <Section>
                     <SectionTitle>
                       <span>⚠️</span>
@@ -644,7 +749,7 @@ function TransactionScanner({ web3Enabled, backendStatus }) {
                   </Section>
                 )}
 
-                {result.analysis.risks.length > 0 && (
+                {result.analysis.risks && result.analysis.risks.length > 0 && (
                   <Section>
                     <SectionTitle>
                       <span>🔍</span>
@@ -660,7 +765,7 @@ function TransactionScanner({ web3Enabled, backendStatus }) {
                   </Section>
                 )}
 
-                {result.analysis.recommendations.length > 0 && (
+                {result.analysis.recommendations && result.analysis.recommendations.length > 0 && (
                   <Section>
                     <SectionTitle>
                       <span>💡</span>
@@ -682,7 +787,7 @@ function TransactionScanner({ web3Enabled, backendStatus }) {
                     Zero-Knowledge Proof Generated
                   </ZKProofTitle>
                   <ZKProofCode>
-                    {result.zkpData.proof}
+                    {result.zkpData?.proof || 'ZK-Proof generation complete'}
                   </ZKProofCode>
                   <div style={{ marginTop: '8px', fontSize: '0.8rem', color: '#64748b' }}>
                     This ZK-proof allows anonymous contribution to threat intelligence without revealing your data.

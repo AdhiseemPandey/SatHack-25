@@ -247,10 +247,6 @@ const RiskItem = styled(ListItem)`
   font-weight: 500;
 `;
 
-const FeatureItem = styled(ListItem)`
-  color: #059669;
-`;
-
 const AnalysisSection = styled.div`
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -315,7 +311,7 @@ const Loader = styled(motion.div)`
   border-radius: 50%;
 `;
 
-function EmailScanner() {
+function EmailScanner({ backendStatus }) {
   const [emailContent, setEmailContent] = useState('');
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState(null);
@@ -388,85 +384,6 @@ Acme Corporation`
     return content;
   };
 
-  // Simple AI-based email analysis (mocked - would call backend in production)
-  const analyzeEmailContent = (content) => {
-    const spamIndicators = [
-      { pattern: /urgent|immediately|asap/gi, weight: 3 },
-      { pattern: /free|winner|prize|million|dollar/gi, weight: 2 },
-      { pattern: /click here|click below|link below/gi, weight: 3 },
-      { pattern: /verify your account|password reset|account suspended/gi, weight: 4 },
-      { pattern: /limited time|expires soon|act now/gi, weight: 2 },
-      { pattern: /congratulations|you won|you've been selected/gi, weight: 2 },
-      { pattern: /http:\/\/|https:\/\//gi, weight: 1 },
-      { pattern: /dear user|dear customer/gi, weight: 1 },
-      { pattern: /bank|paypal|amazon|microsoft/gi, weight: 1 },
-      { pattern: /\$\d+|\d+\s*(dollars|usd)/gi, weight: 2 }
-    ];
-
-    const contentLower = content.toLowerCase();
-    let spamScore = 0;
-    let maxPossibleScore = 0;
-    const detectedPatterns = [];
-
-    spamIndicators.forEach(indicator => {
-      const matches = contentLower.match(indicator.pattern);
-      if (matches) {
-        const patternScore = matches.length * indicator.weight;
-        spamScore += patternScore;
-        maxPossibleScore += indicator.weight * 5; // Assume max 5 occurrences per pattern
-        
-        detectedPatterns.push({
-          pattern: indicator.pattern.toString(),
-          occurrences: matches.length,
-          score: patternScore,
-          examples: matches.slice(0, 3)
-        });
-      }
-    });
-
-    // Text statistics
-    const wordCount = content.split(/\s+/).length;
-    const sentenceCount = content.split(/[.!?]+/).length;
-    const avgSentenceLength = wordCount / Math.max(sentenceCount, 1);
-    
-    // URL detection
-    const urlRegex = /https?:\/\/[^\s]+/g;
-    const urls = content.match(urlRegex) || [];
-    
-    // Email address detection
-    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
-    const emails = content.match(emailRegex) || [];
-
-    // Capital letter ratio (common in spam)
-    const capsRatio = (content.replace(/[^A-Z]/g, '').length / Math.max(content.length, 1)) * 100;
-
-    // Adjust score based on text statistics
-    if (avgSentenceLength < 8) spamScore += 2; // Very short sentences
-    if (urls.length > 2) spamScore += urls.length * 2;
-    if (emails.length > 3) spamScore += 2;
-    if (capsRatio > 30) spamScore += 3;
-
-    // Normalize score to 0-100
-    const normalizedScore = Math.min(100, (spamScore / Math.max(maxPossibleScore, 20)) * 100);
-
-    return {
-      isSpam: normalizedScore > 60,
-      confidence: Math.round(normalizedScore),
-      riskFactors: detectedPatterns.slice(0, 5).map(p => 
-        `Found "${p.pattern.split('/')[1]}" (${p.occurrences}x)`
-      ),
-      statistics: {
-        wordCount,
-        sentenceCount,
-        urlCount: urls.length,
-        emailCount: emails.length,
-        capsRatio: Math.round(capsRatio)
-      },
-      detectedUrls: urls.slice(0, 3),
-      analysis: detectedPatterns
-    };
-  };
-
   const scanEmail = async () => {
     if (!emailContent.trim()) return;
 
@@ -490,18 +407,18 @@ Acme Corporation`
         });
       }, 200);
 
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Analyze email content
-      const analysis = analyzeEmailContent(emailContent);
+      // Make API call to backend
+      const response = await axios.post('http://localhost:5000/api/scan/email', {
+        emailContent: emailContent,
+        scanType: 'comprehensive'
+      });
 
       clearInterval(progressInterval);
       setProgress(100);
 
       // Small delay to show completion
       setTimeout(() => {
-        setResult(analysis);
+        setResult(response.data);
         setScanning(false);
         setProgress(0);
       }, 500);
@@ -509,7 +426,15 @@ Acme Corporation`
     } catch (error) {
       setScanning(false);
       setProgress(0);
-      setError(error.message);
+      
+      if (error.response?.data?.error) {
+        setError(error.response.data.error);
+      } else if (error.message) {
+        setError(error.message);
+      } else {
+        setError('Failed to scan email. Please try again.');
+      }
+      
       console.error('Email scan error:', error);
     }
   };
@@ -530,7 +455,7 @@ Acme Corporation`
     }
   };
 
-  const canScan = emailContent.trim() && !scanning;
+  const canScan = emailContent.trim() && !scanning && backendStatus === 'connected';
 
   return (
     <ScannerContainer>
@@ -617,6 +542,17 @@ Acme Corporation`
       </InputSection>
 
       <AnimatePresence>
+        {backendStatus !== 'connected' && (
+          <ErrorMessage
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            <span>🔌</span>
+            Backend service is unavailable. Please check if the server is running.
+          </ErrorMessage>
+        )}
+
         {error && (
           <ErrorMessage
             initial={{ opacity: 0, height: 0 }}
@@ -652,7 +588,7 @@ Acme Corporation`
               </ResultHeader>
 
               <ResultContent>
-                {result.riskFactors.length > 0 && (
+                {result.riskFactors && result.riskFactors.length > 0 && (
                   <Section>
                     <SectionTitle>
                       <span>⚠️</span>
@@ -675,49 +611,27 @@ Acme Corporation`
                   </SectionTitle>
                   <AnalysisGrid>
                     <AnalysisItem>
-                      <AnalysisLabel>Word Count</AnalysisLabel>
-                      <AnalysisValue>{result.statistics.wordCount}</AnalysisValue>
-                    </AnalysisItem>
-                    <AnalysisItem>
-                      <AnalysisLabel>Sentence Count</AnalysisLabel>
-                      <AnalysisValue>{result.statistics.sentenceCount}</AnalysisValue>
-                    </AnalysisItem>
-                    <AnalysisItem>
-                      <AnalysisLabel>URLs Found</AnalysisLabel>
-                      <AnalysisValue>{result.statistics.urlCount}</AnalysisValue>
-                    </AnalysisItem>
-                    <AnalysisItem>
-                      <AnalysisLabel>Email Addresses</AnalysisLabel>
-                      <AnalysisValue>{result.statistics.emailCount}</AnalysisValue>
-                    </AnalysisItem>
-                    <AnalysisItem>
-                      <AnalysisLabel>Capitalization Ratio</AnalysisLabel>
-                      <AnalysisValue>{result.statistics.capsRatio}%</AnalysisValue>
-                    </AnalysisItem>
-                    <AnalysisItem>
                       <AnalysisLabel>Spam Score</AnalysisLabel>
                       <AnalysisValue>{result.confidence}/100</AnalysisValue>
                     </AnalysisItem>
+                    <AnalysisItem>
+                      <AnalysisLabel>AI Confidence</AnalysisLabel>
+                      <AnalysisValue>{result.confidence}%</AnalysisValue>
+                    </AnalysisItem>
+                    {result.features && (
+                      <>
+                        <AnalysisItem>
+                          <AnalysisLabel>Keywords Found</AnalysisLabel>
+                          <AnalysisValue>{result.features.spam_keyword_score || 'N/A'}</AnalysisValue>
+                        </AnalysisItem>
+                        <AnalysisItem>
+                          <AnalysisLabel>URL Analysis</AnalysisLabel>
+                          <AnalysisValue>{result.features.suspicious_url_ratio || 'N/A'}</AnalysisValue>
+                        </AnalysisItem>
+                      </>
+                    )}
                   </AnalysisGrid>
                 </Section>
-
-                {result.detectedUrls.length > 0 && (
-                  <Section>
-                    <SectionTitle>
-                      <span>🔗</span>
-                      Detected URLs
-                    </SectionTitle>
-                    <List>
-                      {result.detectedUrls.map((url, index) => (
-                        <ListItem key={index} icon="🌐">
-                          <code style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
-                            {url}
-                          </code>
-                        </ListItem>
-                      ))}
-                    </List>
-                  </Section>
-                )}
 
                 <AnalysisSection>
                   <AnalysisTitle>
@@ -727,16 +641,16 @@ Acme Corporation`
                   <div style={{ fontSize: '0.9rem', color: '#475569', lineHeight: '1.5' }}>
                     {result.isSpam ? (
                       <p>
-                        This email was flagged as potential spam based on pattern matching and content analysis. 
+                        This email was flagged as potential spam based on AI pattern matching and content analysis. 
                         Common spam indicators include urgent language, financial incentives, and suspicious links.
                       </p>
                     ) : (
                       <p>
-                        This email appears legitimate based on content analysis. No strong spam indicators were detected.
+                        This email appears legitimate based on AI content analysis. No strong spam indicators were detected.
                       </p>
                     )}
                     <p style={{ marginTop: '8px', fontStyle: 'italic' }}>
-                      Note: This analysis is based on pattern recognition and should be used as a guide, not a definitive classification.
+                      Note: This analysis is powered by machine learning and should be used as a guide, not a definitive classification.
                     </p>
                   </div>
                 </AnalysisSection>

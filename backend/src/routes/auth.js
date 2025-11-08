@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 
-// Mock user database (in production, use MongoDB)
+// In-memory user storage (replace with MongoDB in production)
 const users = new Map();
 
 // User registration
@@ -14,12 +14,14 @@ router.post('/register', async (req, res) => {
     // Validation
     if (!email || !password || !username) {
       return res.status(400).json({
+        success: false,
         error: 'Email, password, and username are required'
       });
     }
 
     if (password.length < 8) {
       return res.status(400).json({
+        success: false,
         error: 'Password must be at least 8 characters long'
       });
     }
@@ -27,6 +29,7 @@ router.post('/register', async (req, res) => {
     // Check if user already exists
     if (users.has(email)) {
       return res.status(409).json({
+        success: false,
         error: 'User already exists'
       });
     }
@@ -41,14 +44,22 @@ router.post('/register', async (req, res) => {
       username,
       password: hashedPassword,
       createdAt: new Date().toISOString(),
-      lastLogin: new Date().toISOString()
+      lastLogin: new Date().toISOString(),
+      preferences: {
+        autoConnectWallet: true,
+        notifications: true
+      }
     };
 
     users.set(email, user);
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.id, email: user.email },
+      { 
+        userId: user.id, 
+        email: user.email,
+        username: user.username
+      },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -61,13 +72,15 @@ router.post('/register', async (req, res) => {
         id: user.id,
         email: user.email,
         username: user.username,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        preferences: user.preferences
       }
     });
 
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({
+      success: false,
       error: 'Internal server error during registration'
     });
   }
@@ -81,6 +94,7 @@ router.post('/login', async (req, res) => {
     // Validation
     if (!email || !password) {
       return res.status(400).json({
+        success: false,
         error: 'Email and password are required'
       });
     }
@@ -89,6 +103,7 @@ router.post('/login', async (req, res) => {
     const user = users.get(email);
     if (!user) {
       return res.status(401).json({
+        success: false,
         error: 'Invalid email or password'
       });
     }
@@ -97,6 +112,7 @@ router.post('/login', async (req, res) => {
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({
+        success: false,
         error: 'Invalid email or password'
       });
     }
@@ -107,7 +123,11 @@ router.post('/login', async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.id, email: user.email },
+      { 
+        userId: user.id, 
+        email: user.email,
+        username: user.username
+      },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -120,13 +140,15 @@ router.post('/login', async (req, res) => {
         id: user.id,
         email: user.email,
         username: user.username,
-        lastLogin: user.lastLogin
+        lastLogin: user.lastLogin,
+        preferences: user.preferences
       }
     });
 
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({
+      success: false,
       error: 'Internal server error during login'
     });
   }
@@ -139,20 +161,78 @@ router.post('/verify', (req, res) => {
 
     if (!token) {
       return res.status(401).json({
+        success: false,
         error: 'No token provided'
       });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
+    // Get user data
+    const user = Array.from(users.values()).find(u => u.email === decoded.email);
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+    
     res.json({
       success: true,
-      user: decoded
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        preferences: user.preferences
+      }
     });
 
   } catch (error) {
     res.status(401).json({
+      success: false,
       error: 'Invalid or expired token'
+    });
+  }
+});
+
+// Update user preferences
+router.put('/preferences', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const { preferences } = req.body;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: 'No token provided'
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = Array.from(users.values()).find(u => u.email === decoded.email);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Update preferences
+    user.preferences = { ...user.preferences, ...preferences };
+    users.set(user.email, user);
+
+    res.json({
+      success: true,
+      message: 'Preferences updated successfully',
+      preferences: user.preferences
+    });
+
+  } catch (error) {
+    res.status(401).json({
+      success: false,
+      error: 'Invalid token or request'
     });
   }
 });
