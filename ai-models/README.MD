@@ -66,7 +66,7 @@ pip install -r requirements.txt
 
 python data_storage.py
 
-python accumulate_data.py(manual training)
+python accumulate_data.py(manual training) // run this 
 
 python train_all_models.py(train all models)
 
@@ -97,3 +97,24 @@ Model Persistence: Save and load trained models with metadata
 Performance Tracking: Monitor model accuracy and training statistics
 
 Data Management: Centralized storage for all training data
+
+
+
+
+
+
+=>FORMAT FOR DAILY_usage / browsing 
+Daily Browsing Activity:
+-Visited: uniswap.org, opensea.io, coinbase.com, coingecko.com, twitter.com, discord.com, reddit.com
+-Search queries: "how to mint an NFT", "best DeFi yield farming strategies", "Ethereum gas fee tracker", "new crypto airdrops"
+-Downloaded files: whitepaper.pdf, contract_abi.json, airdrop_list.jpg
+-Time spent: 5 hours
+-Most active: Late Night (10 PM - 3 AM)
+
+=> Social media
+Social Media Activity:
+- Platforms: Twitter, Facebook, Instagram
+- Posts: 5 new posts, 15 comments
+- Messages: 25 direct messages
+- Links clicked: 8 external links
+- Account changes: Updated profile picture

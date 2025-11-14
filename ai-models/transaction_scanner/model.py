@@ -9,11 +9,28 @@ import pandas as pd
 import joblib
 import json
 import re
+from datetime import datetime, timedelta 
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 import warnings
+
+import os
+import sys
+
+# Add the parent directory to Python path to import data_storage
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import data_storage - choose ONE of these options:
+from data_storage import DataStorage  # If you have a DataStorage class
+# OR if it's a module:
+# import data_storage
+
+# Initialize data_storage
+data_storage = DataStorage()  # or however it should be initialized
+# =========================
+
 warnings.filterwarnings('ignore')
 
 class AdvancedTransactionRiskModel:
